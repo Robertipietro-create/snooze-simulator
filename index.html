@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Snooze Simulator</title>
+<meta name="description" content="Posticipa la sveglia il più possibile. La tua unica vera abilità, finalmente un gioco.">
+<meta name="theme-color" content="#5b21b6">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Snooze">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<style>
+  @property --h { syntax: '<number>'; inherits: true; initial-value: 265; }
+
+  :root {
+    --h: 265;
+    --ink: #2b1055;
+    --green1: #8dffb9; --green2: #12c96b;
+    --red1: #ff8a8a;   --red2: #e5252a;
+    --yellow: #ffd84d;
+    transition: --h .8s ease;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    height: 100%; overflow: hidden; overscroll-behavior: none;
+    touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  }
+  body {
+    position: fixed; inset: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: #1a0b3a; color: #fff;
+  }
+  button { font: inherit; color: inherit; border: 0; background: none; cursor: pointer; touch-action: manipulation; }
+  .hidden { display: none !important; }
+
+  .app { position: relative; height: 100%; max-width: 520px; margin: 0 auto; overflow: hidden; }
+
+  /* ---------- Schermate ---------- */
+  .screen {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center;
+    padding: calc(env(safe-area-inset-top) + 14px) 16px calc(env(safe-area-inset-bottom) + 16px);
+    background:
+      radial-gradient(circle at 20% 10%, rgba(255,255,255,.18), transparent 40%),
+      linear-gradient(165deg, hsl(var(--h) 78% 58%), hsl(calc(var(--h) + 35) 82% 38%));
+    opacity: 0; pointer-events: none; transform: scale(1.05);
+    transition: opacity .35s ease, transform .35s ease;
+  }
+  .screen.active { opacity: 1; pointer-events: auto; transform: none; }
+
+  .btn {
+    display: block; width: 100%; max-width: 340px;
+    padding: 16px 20px; border-radius: 20px;
+    font-size: 19px; font-weight: 900; letter-spacing: .5px;
+    box-shadow: 0 6px 0 rgba(0,0,0,.25), 0 10px 24px rgba(0,0,0,.2);
+    transition: transform .08s ease, box-shadow .08s ease;
+  }
+  .btn:active { transform: translateY(5px); box-shadow: 0 1px 0 rgba(0,0,0,.25), 0 4px 10px rgba(0,0,0,.2); }
+  .btn.primary { background: linear-gradient(180deg, var(--green1), var(--green2)); color: var(--ink); }
+  .btn.share   { background: linear-gradient(180deg, #ffe68a, #ffb31c); color: var(--ink); }
+  .btn.ghost   { background: rgba(255,255,255,.18); box-shadow: inset 0 0 0 2px rgba(255,255,255,.5); }
+  .btn.big { font-size: 22px; padding: 20px; }
+
+  .icon-btn {
+    width: 46px; height: 46px; border-radius: 50%; font-size: 22px;
+    background: rgba(255,255,255,.2); box-shadow: inset 0 0 0 2px rgba(255,255,255,.4);
+    display: grid; place-items: center; flex: none;
+  }
+  .icon-btn:active { transform: scale(.9); }
+
+  /* ---------- Start ---------- */
+  #start { justify-content: space-evenly; text-align: center; }
+  #start .corner { position: absolute; top: calc(env(safe-area-inset-top) + 14px); right: 16px; }
+  .start-clock {
+    font-size: clamp(90px, 24vh, 150px); line-height: 1; display: inline-block;
+    animation: wobble 1.2s ease-in-out infinite; filter: drop-shadow(0 10px 18px rgba(0,0,0,.35));
+  }
+  h1 {
+    font-size: clamp(40px, 11vw, 56px); font-weight: 900; line-height: .95; letter-spacing: -1px;
+    color: var(--yellow);
+    text-shadow: 0 3px 0 #ff4f81, 0 6px 0 var(--ink), 0 10px 20px rgba(0,0,0,.35);
+    transform: rotate(-3deg); margin-top: 8px;
+  }
+  h1 span { color: #fff; }
+  .tagline { margin-top: 14px; font-size: 15px; opacity: .9; font-weight: 600; }
+  .rules {
+    background: rgba(0,0,0,.18); border-radius: 18px; padding: 14px 16px;
+    display: grid; gap: 8px; text-align: left; font-size: 15px; width: 100%; max-width: 340px;
+  }
+  .rules .g { color: var(--green1); } .rules .r { color: var(--red1); }
+  .best { font-size: 18px; font-weight: 800; }
+  .start-actions { display: grid; gap: 12px; width: 100%; justify-items: center; }
+  .floaty { position: absolute; font-size: 28px; opacity: .5; animation: floaty 6s ease-in-out infinite; pointer-events: none; }
+
+  /* ---------- Gioco ---------- */
+  #game { padding-bottom: calc(env(safe-area-inset-bottom) + 8px); }
+  .hud { width: 100%; display: flex; align-items: center; gap: 10px; }
+  .pill {
+    background: rgba(0,0,0,.22); border-radius: 999px; padding: 8px 14px;
+    font-weight: 900; font-size: 20px; display: flex; align-items: center; gap: 6px; white-space: nowrap;
+  }
+  .pill.time { font-variant-numeric: tabular-nums; margin-right: auto; }
+  .pill b { font-variant-numeric: tabular-nums; }
+  .pill.score b { display: inline-block; }
+  .pill.score b.pop { animation: pop .3s ease; }
+
+  .timer {
+    width: 100%; height: 14px; margin-top: 12px; border-radius: 999px;
+    background: rgba(0,0,0,.25); overflow: hidden; box-shadow: inset 0 2px 4px rgba(0,0,0,.25);
+  }
+  #timerFill {
+    height: 100%; width: 100%; transform-origin: left center; border-radius: inherit;
+    background: linear-gradient(90deg, #ffe066, #8dffb9);
+  }
+  #timerFill.low { background: linear-gradient(90deg, #ff3b3b, #ff8a00); animation: blink .25s steps(2) infinite; }
+
+  .clock-zone { flex: none; display: flex; flex-direction: column; align-items: center; margin-top: 6px; width: 100%; position: relative; }
+  .clock-wrap { position: relative; }
+  .clock-wrap.bonk { animation: bonk .25s ease; }
+  .clock {
+    --amp: 2px; --rot: 3deg; --spd: .32s;
+    font-size: clamp(84px, 19vh, 130px); line-height: 1.05; display: inline-block;
+    animation: shake var(--spd) linear infinite;
+    filter: drop-shadow(0 8px 14px rgba(0,0,0,.35));
+  }
+  .drin {
+    position: absolute; top: 20%; font-weight: 900; font-size: 18px; color: var(--yellow);
+    text-shadow: 0 2px 0 var(--ink); pointer-events: none; animation: drin .7s ease-out forwards;
+  }
+  .bubble {
+    position: relative; margin-top: 10px; background: #fff; color: var(--ink);
+    border-radius: 18px; padding: 10px 14px; width: 100%; max-width: 360px;
+    min-height: 3.4em; display: grid; place-items: center; text-align: center;
+    font-weight: 800; font-size: 16px; line-height: 1.25;
+    box-shadow: 0 6px 0 rgba(0,0,0,.18);
+  }
+  .bubble::before {
+    content: ""; position: absolute; top: -10px; left: 50%; margin-left: -10px;
+    border: 10px solid transparent; border-top: 0; border-bottom-color: #fff;
+  }
+  .bubble.say { animation: say .3s ease; }
+
+  .play { position: relative; flex: 1; width: 100%; margin-top: 10px; }
+  .game-btn {
+    position: absolute; left: 0; top: 0; border-radius: 22px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-weight: 900; line-height: 1.05; color: var(--ink);
+    box-shadow: 0 6px 0 rgba(0,0,0,.3), 0 12px 22px rgba(0,0,0,.25);
+    touch-action: none;
+  }
+  .game-btn .em { font-size: 1.5em; }
+  .game-btn.appear { animation: appear .22s cubic-bezier(.3,1.6,.6,1); }
+  .game-btn:active { filter: brightness(.92); }
+  #snooze { background: linear-gradient(180deg, var(--green1), var(--green2)); z-index: 2; }
+  #fake { background: linear-gradient(180deg, var(--red1), var(--red2)); color: #fff; z-index: 1; }
+  #fake.disguise { background: linear-gradient(180deg, var(--green1), var(--green2)); color: var(--ink); }
+  #game.dead .game-btn { filter: grayscale(1) brightness(.7); pointer-events: none; }
+  #game.dead .clock { animation-duration: .05s; }
+
+  /* ---------- Game over ---------- */
+  #over { justify-content: space-evenly; text-align: center; }
+  .over-emoji { font-size: clamp(64px, 14vh, 100px); line-height: 1; animation: wobble 1.6s ease-in-out infinite; }
+  #overReason { font-size: clamp(19px, 5.4vw, 24px); font-weight: 900; line-height: 1.2; max-width: 360px; }
+  .score-card {
+    background: rgba(0,0,0,.2); border-radius: 24px; padding: 14px 18px; width: 100%; max-width: 340px;
+  }
+  .score-card .label { text-transform: uppercase; letter-spacing: 2px; font-size: 13px; font-weight: 800; opacity: .8; }
+  .score-card .big {
+    font-size: clamp(64px, 15vh, 96px); font-weight: 900; line-height: 1; color: var(--yellow);
+    text-shadow: 0 4px 0 var(--ink);
+  }
+  .score-card .sub { font-size: 14px; margin-top: 6px; opacity: .95; }
+  .badge {
+    display: inline-block; margin-top: 8px; padding: 6px 12px; border-radius: 999px;
+    background: var(--yellow); color: var(--ink); font-weight: 900; font-size: 14px;
+    animation: pulse .8s ease-in-out infinite;
+  }
+  .verdict {
+    font-size: 17px; font-weight: 700; line-height: 1.35; max-width: 360px;
+    background: #fff; color: var(--ink); padding: 12px 16px; border-radius: 18px;
+    box-shadow: 0 6px 0 rgba(0,0,0,.18); transform: rotate(-1.5deg);
+  }
+  .actions { display: grid; gap: 12px; width: 100%; justify-items: center; }
+  #over.locked .actions { pointer-events: none; opacity: .6; }
+
+  /* ---------- Effetti ---------- */
+  .particle {
+    position: fixed; z-index: 50; pointer-events: none; font-size: 26px; font-weight: 900;
+    transform: translate(-50%, -50%); animation: particle .8s ease-out forwards;
+  }
+  .particle.plus { color: var(--yellow); text-shadow: 0 2px 0 var(--ink); font-size: 30px; }
+  #flash { position: fixed; inset: 0; background: #ff2d2d; opacity: 0; pointer-events: none; z-index: 60; }
+  #flash.on { animation: flash .5s ease-out; }
+  #toast {
+    position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 24px); z-index: 70;
+    transform: translate(-50%, 30px); opacity: 0; transition: .3s ease;
+    background: var(--ink); color: #fff; padding: 12px 18px; border-radius: 14px; font-weight: 700;
+    box-shadow: 0 8px 24px rgba(0,0,0,.35); pointer-events: none; max-width: 90vw; text-align: center;
+  }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  @keyframes shake {
+    0%   { transform: translate(0, 0) rotate(0); }
+    25%  { transform: translate(calc(var(--amp) * -1), calc(var(--amp) * .4)) rotate(calc(var(--rot) * -1)); }
+    50%  { transform: translate(var(--amp), calc(var(--amp) * -.4)) rotate(var(--rot)); }
+    75%  { transform: translate(calc(var(--amp) * -.6), calc(var(--amp) * -.2)) rotate(calc(var(--rot) * -.6)); }
+    100% { transform: translate(0, 0) rotate(0); }
+  }
+  @keyframes wobble { 0%,100% { transform: rotate(-8deg); } 50% { transform: rotate(8deg) scale(1.05); } }
+  @keyframes floaty { 0%,100% { transform: translateY(0) rotate(-10deg); } 50% { transform: translateY(-18px) rotate(10deg); } }
+  @keyframes pop { 0% { transform: scale(1); } 50% { transform: scale(1.5); } 100% { transform: scale(1); } }
+  @keyframes bonk { 0% { transform: scale(1); } 40% { transform: scale(.82, 1.12); } 100% { transform: scale(1); } }
+  @keyframes say { 0% { transform: scale(.85); } 60% { transform: scale(1.04); } 100% { transform: scale(1); } }
+  @keyframes appear { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  @keyframes blink { 50% { opacity: .55; } }
+  @keyframes pulse { 50% { transform: scale(1.08); } }
+  @keyframes flash { 0% { opacity: .65; } 100% { opacity: 0; } }
+  @keyframes particle {
+    0%   { opacity: 1; transform: translate(-50%, -50%) scale(.6); }
+    100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1.3) rotate(var(--r)); }
+  }
+  @keyframes drin {
+    0%   { opacity: 0; transform: translate(0, 0) scale(.6) rotate(var(--r)); }
+    25%  { opacity: 1; }
+    100% { opacity: 0; transform: translate(var(--dx), -30px) scale(1.2) rotate(var(--r)); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .start-clock, .over-emoji, .floaty { animation: none; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- START -->
+  <section id="start" class="screen active">
+    <button class="icon-btn corner mute-btn" aria-label="Audio on/off">🔔</button>
+    <div class="floaty" style="left:8%;top:18%">💤</div>
+    <div class="floaty" style="right:10%;top:40%;animation-delay:-2s">💤</div>
+    <div class="floaty" style="left:12%;bottom:22%;animation-delay:-4s">🛏️</div>
+
+    <div>
+      <div class="start-clock">⏰</div>
+      <h1>Snooze<br><span>Simulator</span></h1>
+      <p class="tagline">Il gioco che simula la tua unica vera abilità.</p>
+    </div>
+
+    <div class="rules">
+      <div>👆 Tocca <b class="g">POSTICIPA</b> prima che scada il tempo</div>
+      <div>⚡ Ogni volta è più piccolo e più veloce</div>
+      <div>🚫 Non toccare mai <b class="r">SPEGNI</b></div>
+    </div>
+
+    <div class="best">🏆 Record: <b id="bestStart">0</b></div>
+
+    <div class="start-actions">
+      <button class="btn primary big" id="playBtn">😴 INIZIA A DORMIRE</button>
+      <button class="btn ghost hidden" id="installBtn">📲 Installa l'app</button>
+    </div>
+  </section>
+
+  <!-- GIOCO -->
+  <section id="game" class="screen">
+    <div class="hud">
+      <div class="pill score">😴 <b id="score">0</b></div>
+      <div class="pill time">🕖 <b id="clockTime">07:00</b></div>
+      <button class="icon-btn mute-btn" aria-label="Audio on/off">🔔</button>
+    </div>
+    <div class="timer"><div id="timerFill"></div></div>
+
+    <div class="clock-zone">
+      <div class="clock-wrap" id="clockWrap"><div class="clock" id="clock">⏰</div></div>
+      <div class="bubble" id="bubble">DRIIIN!</div>
+    </div>
+
+    <div class="play" id="play">
+      <button class="game-btn" id="snooze"><span class="em">😴</span><span>POSTICIPA</span></button>
+      <button class="game-btn hidden" id="fake"><span class="em">🔕</span><span>SPEGNI</span></button>
+    </div>
+  </section>
+
+  <!-- GAME OVER -->
+  <section id="over" class="screen">
+    <div class="over-emoji" id="overEmoji">☀️</div>
+    <h2 id="overReason">Sei sveglio.</h2>
+    <div class="score-card">
+      <div class="label">Posticipi</div>
+      <div class="big" id="finalScore">0</div>
+      <div class="badge hidden" id="newRecord">🏆 NUOVO RECORD!</div>
+      <div class="sub">Record: <b id="bestOver">0</b> · Alzato alle <b id="wakeTime">07:00</b></div>
+    </div>
+    <p class="verdict" id="verdict"></p>
+    <div class="actions">
+      <button class="btn primary" id="againBtn">🔁 Ancora 5 minuti</button>
+      <button class="btn share" id="shareBtn">📲 Sfida un amico</button>
+      <button class="btn ghost" id="menuBtn">🏠 Menu</button>
+    </div>
+  </section>
+
+</div>
+<div id="flash"></div>
+<div id="toast"></div>
+
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+
+  // ---------- Storage sicuro ----------
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  };
+
+  // ---------- Testi ----------
+  const PHRASES = [
+    "Ok, cinque minuti. Solo cinque.",
+    "Va bene, ma poi ti alzi davvero.",
+    "Ancora? Sul serio?",
+    "Il caffè non si fa da solo, sai.",
+    "Guarda che fuori è già giorno.",
+    "Tua madre a quest'ora aveva già stirato.",
+    "Il letto non è un lavoro, purtroppo.",
+    "Sto iniziando a perdere la pazienza.",
+    "Complimenti, campione di pigrizia.",
+    "Il tuo capo ti sta già scrivendo.",
+    "Anche il gatto è più produttivo di te.",
+    "Ho visto bradipi più motivati.",
+    "Le lumache ti stanno superando.",
+    "Il tuo futuro ti sta guardando. Male.",
+    "Sono una sveglia, non una ninna nanna!",
+    "Basta! Ho una dignità anche io!",
+    "Ti meriti un lunedì che non finisce mai.",
+    "Sto valutando seriamente di licenziarmi.",
+    "Mi vergogno di essere la TUA sveglia.",
+    "Il materasso ha chiesto il divorzio.",
+    "Hai la forza di volontà di un budino.",
+    "Ho chiamato i rinforzi: tua nonna.",
+    "Il sole è sorto, tramontato e risorto.",
+    "Sei il motivo per cui inventarono le sveglie.",
+    "Che tu possa sognare riunioni infinite.",
+    "Mi scarico per protesta. Giuro che lo faccio.",
+    "Ti auguro calzini bagnati per tutta la vita.",
+    "Sto per trasformarmi in un frullatore.",
+    "Ti sveglierai direttamente in pensione.",
+    "AAAAH! ALZATI, CUSCINO CON LE GAMBE!",
+    "Basta. Chiamo i vigili del fuoco.",
+    "Sei una delusione con il pigiama."
+  ];
+
+  const VERDICTS = [
+    [0,  "Zero posticipi. Neanche a dormire sei capace. Impressionante, in senso negativo."],
+    [1,  "Un misero posticipo? Mia nonna fa di meglio, e si sveglia alle 5."],
+    [3,  "Principiante del cuscino. Torna quando avrai sviluppato una vera pigrizia."],
+    [6,  "Pigrizia nella media. Né carne né pesce: sei un toast scondito."],
+    [10, "Ritardatario certificato. Il tuo capo ha già scritto la mail di richiamo."],
+    [15, "Professionista del materasso. Le lenzuola ti chiamano per nome."],
+    [22, "Maestro dello snooze. I bradipi ti chiedono l'autografo."],
+    [30, "Leggenda del letargo. Gli orsi ti studiano per migliorarsi."],
+    [40, "Divinità del sonno. Hai saltato colazione, pranzo e probabilmente un matrimonio."],
+    [55, "Sei diventato un tutt'uno col letto. La sveglia si è licenziata. Contento?"]
+  ];
+
+  const OPENERS = ["DRIIIN! Sono le 07:00, svegliati!", "BIP BIP BIP! È ora!", "DRIIIN! Buongiorno, dormiglione!"];
+
+  // ---------- Stato ----------
+  let best = parseInt(store.get('snooze_best', '0'), 10) || 0;
+  let muted = store.get('snooze_muted', '0') === '1';
+
+  const S = {
+    running: false, paused: false, score: 0,
+    deadline: 0, limit: 0, pausedLeft: 0, raf: 0,
+    lastPhrase: -1, lastPos: null, lastTap: null
+  };
+
+  const el = {
+    screens: { start: $('start'), game: $('game'), over: $('over') },
+    score: $('score'), clockTime: $('clockTime'), timerFill: $('timerFill'),
+    clock: $('clock'), clockWrap: $('clockWrap'), bubble: $('bubble'),
+    play: $('play'), snooze: $('snooze'), fake: $('fake'),
+    flash: $('flash'), toast: $('toast')
+  };
+
+  // ---------- Audio (Web Audio API) ----------
+  let actx = null, master = null, alarmTimer = 0;
+
+  function initAudio() {
+    if (!actx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      actx = new AC();
+      master = actx.createGain();
+      master.gain.value = muted ? 0 : 0.16;
+      master.connect(actx.destination);
+    }
+    if (actx.state === 'suspended') actx.resume();
+  }
+
+  function tone(freq, dur, type = 'square', vol = 1, when = 0, slideTo = 0) {
+    if (!actx || muted) return;
+    const t = actx.currentTime + when;
+    const o = actx.createOscillator();
+    const g = actx.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+    g.gain.setValueAtTime(vol, t + Math.max(0.011, dur - 0.02));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(master);
+    o.start(t); o.stop(t + dur + 0.03);
+  }
+
+  function alarmLoop() {
+    if (!S.running) return;
+    const beeps = 4, step = 0.12;
+    if (!S.paused) {
+      const f = Math.min(880 + S.score * 20, 2000);
+      for (let i = 0; i < beeps; i++) tone(i % 2 ? f * 1.19 : f, 0.08, 'square', 0.55, i * step);
+      drin();
+    }
+    const gap = Math.max(260, 1000 - S.score * 25);
+    alarmTimer = setTimeout(alarmLoop, beeps * step * 1000 + gap);
+  }
+
+  const sfx = {
+    snooze() { tone(520, 0.09, 'triangle', 0.9, 0, 260); tone(780, 0.06, 'sine', 0.5, 0.05); },
+    fake()   { tone(140, 0.5, 'sawtooth', 0.9, 0, 70); tone(146, 0.5, 'square', 0.4); },
+    lose()   { [440, 370, 311, 220].forEach((f, i) => tone(f, i === 3 ? 0.6 : 0.22, 'sawtooth', 0.5, i * 0.24, i === 3 ? 150 : 0)); }
+  };
+
+  function setMuted(m) {
+    muted = m;
+    store.set('snooze_muted', m ? '1' : '0');
+    if (master) master.gain.value = m ? 0 : 0.16;
+    document.querySelectorAll('.mute-btn').forEach(b => b.textContent = m ? '🔕' : '🔔');
+  }
+
+  const vibrate = p => { try { navigator.vibrate && navigator.vibrate(p); } catch (e) {} };
+
+  // ---------- Utilità ----------
+  function show(name) {
+    Object.entries(el.screens).forEach(([k, s]) => s.classList.toggle('active', k === name));
+  }
+
+  function restartAnim(node, cls) {
+    node.classList.remove(cls);
+    void node.offsetWidth;
+    node.classList.add(cls);
+  }
+
+  const pad = n => String(n).padStart(2, '0');
+  function wakeClock(score) {
+    const mins = 7 * 60 + score * 9; // lo snooze classico dura 9 minuti
+    return pad(Math.floor(mins / 60) % 24) + ':' + pad(mins % 60);
+  }
+
+  let toastTimer = 0;
+  function toast(msg) {
+    el.toast.textContent = msg;
+    el.toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.toast.classList.remove('show'), 2200);
+  }
+
+  function burst(x, y) {
+    const em = ['💤', '😴', '💤', '⭐', '💤'];
+    for (let i = 0; i < 6; i++) {
+      const s = document.createElement('span');
+      s.className = 'particle';
+      s.textContent = em[i % em.length];
+      s.style.left = x + 'px'; s.style.top = y + 'px';
+      s.style.setProperty('--dx', (Math.random() * 180 - 90) + 'px');
+      s.style.setProperty('--dy', (-50 - Math.random() * 130) + 'px');
+      s.style.setProperty('--r', (Math.random() * 90 - 45) + 'deg');
+      s.addEventListener('animationend', () => s.remove());
+      document.body.appendChild(s);
+    }
+    const p = document.createElement('span');
+    p.className = 'particle plus';
+    p.textContent = '+1';
+    p.style.left = x + 'px'; p.style.top = (y - 30) + 'px';
+    p.style.setProperty('--dx', '0px'); p.style.setProperty('--dy', '-80px'); p.style.setProperty('--r', '0deg');
+    p.addEventListener('animationend', () => p.remove());
+    document.body.appendChild(p);
+  }
+
+  function drin() {
+    const d = document.createElement('span');
+    const left = Math.random() < 0.5;
+    d.className = 'drin';
+    d.textContent = S.score > 15 ? 'DRIIIIN!!' : 'DRIN!';
+    d.style[left ? 'right' : 'left'] = '88%';
+    d.style.setProperty('--dx', (left ? -1 : 1) * (20 + Math.random() * 20) + 'px');
+    d.style.setProperty('--r', (left ? -1 : 1) * (10 + Math.random() * 15) + 'deg');
+    d.addEventListener('animationend', () => d.remove());
+    el.clockWrap.appendChild(d);
+  }
+
+  // ---------- Difficoltà ----------
+  const timeLimit = s => s === 0 ? 3500 : Math.max(600, 3200 * Math.pow(0.95, s));
+  function btnSize(s) {
+    const base = Math.min(el.play.clientWidth * 0.55, 200);
+    return Math.max(64, base * Math.pow(0.965, s));
+  }
+
+  function setShake(s) {
+    el.clock.style.setProperty('--amp', Math.min(2 + s * 0.7, 20) + 'px');
+    el.clock.style.setProperty('--rot', Math.min(3 + s * 0.8, 28) + 'deg');
+    el.clock.style.setProperty('--spd', Math.max(0.07, 0.32 - s * 0.008) + 's');
+  }
+
+  // ---------- Posizionamento bottoni ----------
+  function sizeButton(btn, w) {
+    const h = w * 0.62;
+    btn.style.width = w + 'px';
+    btn.style.height = h + 'px';
+    btn.style.fontSize = Math.max(12, w * 0.12) + 'px';
+    return h;
+  }
+
+  function placeButtons() {
+    const pw = el.play.clientWidth, ph = el.play.clientHeight, m = 6;
+    const w = btnSize(S.score), h = sizeButton(el.snooze, w);
+    const rand = (min, max) => min + Math.random() * Math.max(0, max - min);
+
+    let x, y, tries = 0;
+    const minDist = Math.min(pw, ph) * 0.3;
+    do {
+      x = rand(m, pw - w - m);
+      y = rand(m, ph - h - m);
+      tries++;
+    } while (S.lastPos && Math.hypot(x - S.lastPos.x, y - S.lastPos.y) < minDist && tries < 20);
+    S.lastPos = { x, y };
+    el.snooze.style.left = x + 'px';
+    el.snooze.style.top = y + 'px';
+    restartAnim(el.snooze, 'appear');
+
+    // Bottone trappola "SPEGNI"
+    el.fake.classList.add('hidden');
+    const chance = Math.min(0.15 + S.score * 0.012, 0.5);
+    if (S.score >= 3 && Math.random() < chance) {
+      const fw = w * 0.95, fh = sizeButton(el.fake, fw), gap = 14;
+      const tap = S.lastTap ? { x: S.lastTap.x - el.play.getBoundingClientRect().left, y: S.lastTap.y - el.play.getBoundingClientRect().top } : null;
+      for (let i = 0; i < 30; i++) {
+        const fx = rand(m, pw - fw - m), fy = rand(m, ph - fh - m);
+        const overlapsReal = fx < x + w + gap && fx + fw + gap > x && fy < y + h + gap && fy + fh + gap > y;
+        const underFinger = tap && tap.x > fx - 30 && tap.x < fx + fw + 30 && tap.y > fy - 30 && tap.y < fy + fh + 30;
+        if (!overlapsReal && !underFinger) {
+          el.fake.style.left = fx + 'px';
+          el.fake.style.top = fy + 'px';
+          el.fake.classList.toggle('disguise', S.score >= 12 && Math.random() < 0.4);
+          el.fake.classList.remove('hidden');
+          restartAnim(el.fake, 'appear');
+          break;
+        }
+      }
+    }
+  }
+
+  // ---------- Ciclo di gioco ----------
+  function nextRound() {
+    S.limit = timeLimit(S.score);
+    S.deadline = performance.now() + S.limit;
+    placeButtons();
+  }
+
+  function tick(now) {
+    if (!S.running) return;
+    if (!S.paused) {
+      const left = S.deadline - now;
+      const p = Math.max(0, left / S.limit);
+      el.timerFill.style.transform = 'scaleX(' + p + ')';
+      el.timerFill.classList.toggle('low', p < 0.3);
+      if (left <= 0) { gameOver('time'); return; }
+    }
+    S.raf = requestAnimationFrame(tick);
+  }
+
+  function say(text) {
+    el.bubble.textContent = text;
+    restartAnim(el.bubble, 'say');
+  }
+
+  function pickPhrase() {
+    let i;
+    if (S.score <= PHRASES.length) {
+      i = Math.min(PHRASES.length - 1, S.score - 1 + Math.floor(Math.random() * 2));
+      if (i === S.lastPhrase) i = Math.min(PHRASES.length - 1, i + 1);
+      if (i === S.lastPhrase) i = Math.max(0, i - 1);
+    } else {
+      do { i = PHRASES.length - 10 + Math.floor(Math.random() * 10); } while (i === S.lastPhrase);
+    }
+    S.lastPhrase = i;
+    return PHRASES[i];
+  }
+
+  function startGame() {
+    initAudio();
+    Object.assign(S, { running: true, paused: false, score: 0, lastPhrase: -1, lastPos: null, lastTap: null });
+    el.screens.game.classList.remove('dead');
+    el.score.textContent = '0';
+    el.clockTime.textContent = wakeClock(0);
+    document.documentElement.style.setProperty('--h', 265);
+    setShake(0);
+    say(OPENERS[Math.floor(Math.random() * OPENERS.length)]);
+    show('game');
+    nextRound();
+    cancelAnimationFrame(S.raf);
+    S.raf = requestAnimationFrame(tick);
+    clearTimeout(alarmTimer);
+    alarmLoop();
+  }
+
+  function onSnooze(e) {
+    e.preventDefault();
+    if (!S.running || S.paused) return;
+    S.score++;
+    S.lastTap = { x: e.clientX, y: e.clientY };
+    sfx.snooze();
+    vibrate(15);
+    burst(e.clientX, e.clientY);
+
+    el.score.textContent = S.score;
+    restartAnim(el.score, 'pop');
+    el.clockTime.textContent = wakeClock(S.score);
+    restartAnim(el.clockWrap, 'bonk');
+    document.documentElement.style.setProperty('--h', Math.max(-10, 265 - S.score * 9));
+    setShake(S.score);
+    say(pickPhrase());
+    nextRound();
+  }
+
+  function onFake(e) {
+    e.preventDefault();
+    if (!S.running || S.paused) return;
+    gameOver('fake');
+  }
+
+  function gameOver(reason) {
+    if (!S.running) return;
+    S.running = false;
+    cancelAnimationFrame(S.raf);
+    clearTimeout(alarmTimer);
+    el.screens.game.classList.add('dead');
+    el.timerFill.style.transform = reason === 'time' ? 'scaleX(0)' : el.timerFill.style.transform;
+    reason === 'fake' ? sfx.fake() : sfx.lose();
+    vibrate([90, 60, 200]);
+    restartAnim(el.flash, 'on');
+    say(reason === 'fake' ? "Click. Silenzio. Ora sei sveglio. Ah ah." : "Tempo scaduto! Sveglia: 1, tu: 0.");
+
+    const isRecord = S.score > best;
+    if (isRecord) { best = S.score; store.set('snooze_best', String(best)); }
+
+    $('overEmoji').textContent = reason === 'fake' ? '🔕' : '☀️';
+    $('overReason').textContent = reason === 'fake'
+      ? "Hai premuto SPEGNI. Congratulazioni: sei ufficialmente sveglio."
+      : "Troppo lento! La sveglia ha vinto e ora devi alzarti.";
+    $('finalScore').textContent = S.score;
+    $('bestOver').textContent = best;
+    $('bestStart').textContent = best;
+    $('wakeTime').textContent = wakeClock(S.score);
+    $('newRecord').classList.toggle('hidden', !isRecord || S.score === 0);
+    let verdict = VERDICTS[0][1];
+    for (const [min, txt] of VERDICTS) if (S.score >= min) verdict = txt;
+    $('verdict').textContent = verdict;
+
+    const over = el.screens.over;
+    over.classList.add('locked'); // evita tocchi accidentali subito dopo la sconfitta
+    setTimeout(() => {
+      show('over');
+      setTimeout(() => over.classList.remove('locked'), 600);
+    }, 750);
+  }
+
+  function toMenu() {
+    document.documentElement.style.setProperty('--h', 265);
+    $('bestStart').textContent = best;
+    show('start');
+  }
+
+  // ---------- Condivisione ----------
+  async function share() {
+    const s = Number($('finalScore').textContent) || 0;
+    const url = location.href.split('#')[0].split('?')[0];
+    const text = `⏰😴 Ho posticipato la sveglia ${s} ${s === 1 ? 'volta' : 'volte'} su Snooze Simulator (mi sono alzato alle ${wakeClock(s)}). Riesci a dormire più di me?`;
+    if (navigator.share) {
+      try { await navigator.share({ title: 'Snooze Simulator', text, url }); } catch (e) { /* annullato */ }
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text + ' ' + url);
+      toast('Sfida copiata negli appunti! 📋');
+    } catch (e) {
+      toast('Condivisione non disponibile su questo browser 😢');
+    }
+  }
+
+  // ---------- Eventi ----------
+  el.snooze.addEventListener('pointerdown', onSnooze);
+  el.fake.addEventListener('pointerdown', onFake);
+  $('playBtn').addEventListener('click', startGame);
+  $('againBtn').addEventListener('click', startGame);
+  $('menuBtn').addEventListener('click', toMenu);
+  $('shareBtn').addEventListener('click', share);
+  document.querySelectorAll('.mute-btn').forEach(b => b.addEventListener('click', () => { initAudio(); setMuted(!muted); }));
+
+  // Pausa se l'app va in background
+  document.addEventListener('visibilitychange', () => {
+    if (!S.running) return;
+    if (document.hidden) {
+      S.paused = true;
+      S.pausedLeft = Math.max(0, S.deadline - performance.now());
+      if (actx) actx.suspend();
+    } else {
+      S.paused = false;
+      S.deadline = performance.now() + S.pausedLeft;
+      if (actx) actx.resume();
+      say("Ah, sei tornato. Pensavi di scappare?");
+    }
+  });
+
+  // Niente zoom, scroll o menu contestuali
+  document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+  document.addEventListener('gesturestart', e => e.preventDefault());
+  document.addEventListener('dblclick', e => e.preventDefault());
+  document.addEventListener('contextmenu', e => e.preventDefault());
+
+  // ---------- PWA ----------
+  let installEvt = null;
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    installEvt = e;
+    $('installBtn').classList.remove('hidden');
+  });
+  $('installBtn').addEventListener('click', async () => {
+    if (!installEvt) return;
+    installEvt.prompt();
+    try { await installEvt.userChoice; } catch (e) {}
+    installEvt = null;
+    $('installBtn').classList.add('hidden');
+  });
+  window.addEventListener('appinstalled', () => $('installBtn').classList.add('hidden'));
+
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+  }
+
+  // Icona PNG per iOS generata con canvas a partire dall'SVG
+  (function appleIcon() {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const c = document.createElement('canvas');
+        c.width = c.height = 180;
+        c.getContext('2d').drawImage(img, 0, 0, 180, 180);
+        const link = document.createElement('link');
+        link.rel = 'apple-touch-icon';
+        link.href = c.toDataURL('image/png');
+        document.head.appendChild(link);
+      } catch (e) {}
+    };
+    img.src = 'icon.svg';
+  })();
+
+  // ---------- Init ----------
+  setMuted(muted);
+  $('bestStart').textContent = best;
+})();
+</script>
+</body>
+</html>

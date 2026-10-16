@@ -1,0 +1,16 @@
+{
+  "name": "Snooze Simulator",
+  "short_name": "Snooze",
+  "description": "Posticipa la sveglia il più possibile prima che scada il tempo.",
+  "lang": "it",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#5b21b6",
+  "theme_color": "#5b21b6",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
